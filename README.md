@@ -20,3 +20,12 @@ command line `python -m kernelpool train|estimate ...`.
 `environment_desc-pz.txt` is the `pip freeze` of the environment the
 shipped models were built in; `build_submission.sh` rebuilds the eight
 submission files and model bundles and runs the checks.
+
+## License
+
+The code in this repository is released under the MIT license (see
+`LICENSE`). It builds on RAIL, FlexZBoost/flexcode, GPz and XGBoost,
+which are not part of this repository and carry their own (MIT / BSD /
+Apache) licenses; the label-model parameter table in
+`kernelpool/pilot/manyband_mixture.py` is copied from RAIL's
+`GaussianSkewtScatterSelector` (`rail_astro_tools`, MIT).
