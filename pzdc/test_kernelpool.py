@@ -33,7 +33,7 @@ from kernelpool import estimate_only, train_and_estimate
 # and a URL to download the sumission data files
 # and needed model files
 SUBMISSION_NAME: str = "kernelpool"
-SUBMISSION_URL: str = "https://github.com/ThomasReiprich/pz_kernelpool/releases/download/v1.1.0/kernelpool_submission.tgz"   # GitHub release .tgz of the pre-made estimates + model bundles
+SUBMISSION_URL: str = "https://github.com/ThomasReiprich/pz_kernelpool/releases/download/v1.2.0/kernelpool_submission.tgz"   # GitHub release .tgz of the pre-made estimates + model bundles
 
 # don't change these
 SUBMIT_DIR: str = f"submissions/{SUBMISSION_NAME}"
@@ -124,7 +124,7 @@ def test_example_taskset_1(setup_public_area: int, setup_submit_area: int) -> No
 
 
 def test_example_taskset_2(setup_public_area: int, setup_submit_area: int) -> None:
-    """Test fuction to validate a submisson for Taskset 2 (added in v1.1.0)."""
+    """Test fuction to validate a submisson for Taskset 2 (added in v1.1.0; faint-end BPZ mixture since v1.2.0)."""
     assert setup_public_area == 0
     assert setup_submit_area == 0
     run_taskset_2(PUBLIC_AREA, SUBMISSION_NAME, run_taskset_2_estimation_only, run_taskset_2_training_and_estimation)

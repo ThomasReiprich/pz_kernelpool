@@ -25,6 +25,7 @@ cycler==0.12.1
 debugpy==1.8.21
 defusedxml==0.7.1
 Deprecated==1.3.1
+desc-bpz @ file:///tmp/claude-1953/-vol-erosita1-data1-reiprich-Cowork-Projects-DESC-NZ-Challenge/b59c130f-9203-4df6-9385-6a1c816ad024/scratchpad/bpzdl/desc_bpz-0.4.0-py3-none-any.whl#sha256=24b54d0a56a4117515aa12c885084516a6df967600974b31cd93ed5af4cc8d24
 executing==2.2.1
 fastjsonschema==2.22.2
 fisher-a2z==0.4.2
@@ -40,6 +41,7 @@ httpcore==1.0.9
 httpx==0.28.1
 hyperframe==6.1.0
 idna==3.19
+iniconfig==2.3.1
 ipykernel==7.3.0
 ipython==9.17.1
 ipython_pygments_lexers==1.1.1
@@ -102,6 +104,7 @@ pathspec==1.1.1
 pexpect==4.9.0
 pillow==12.3.0
 platformdirs==4.11.8
+pluggy==1.7.0
 prometheus_client==0.26.0
 prompt_toolkit==3.0.53
 psutil==7.2.2
@@ -117,6 +120,7 @@ pyerfa==2.0.1.5
 Pygments==2.21.0
 pyparsing==3.3.2
 pytdigest==0.1.4
+pytest==9.1.1
 python-dateutil==2.9.0.post0
 python-json-logger==4.2.0
 PyWavelets==1.10.0
@@ -124,6 +128,7 @@ PyYAML==6.0.3
 pyzmq==27.2.0
 -e git+https://github.com/ThomasReiprich/pz_data_challenge.git@fc0bec10978c5db713518796fd65443dd106848a#egg=pz_data_challenge
 pz-rail-base==2.0.11
+pz-rail-bpz @ file:///tmp/claude-1953/-vol-erosita1-data1-reiprich-Cowork-Projects-DESC-NZ-Challenge/b59c130f-9203-4df6-9385-6a1c816ad024/scratchpad/bpzdl/pz_rail_bpz-2.2.0-py3-none-any.whl#sha256=fc39e71d8b8bb9911e08afca546f9a515fdb6774a077ddc5b61bc42717f13e6b
 pz-rail-flexzboost==2.0.3
 pz-rail-gpz-v1==2.0.3
 pz-rail-pipelines==2.0.2

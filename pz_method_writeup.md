@@ -170,3 +170,55 @@ representative N(z) to i = 24 and is extrapolated beyond. Pool variants
 mode, mass modes) were equal or worse. Stated plainly: a
 spectroscopically selected training set does not constrain the faint
 half of this test sample, and no estimator we tried changes that.
+
+## Task set 2, v1.2.0: a template-fitting posterior mixed in at the faint end (2026-10-23)
+
+**What changes.** For task-set-2 objects fainter than i = 24.5 — beyond
+the depth of the spectroscopic training set — the shipped PDF is an
+equal-weight mixture of the pool PDF of v1.1.0 (calibrated, with its 3 %
+floor) and a template-fitting posterior from BPZ (Benítez 2000; RAIL's
+`pz-rail-bpz` port, `desc-bpz`), with the same floor on the BPZ part,
+and the point estimate of those objects is the median of the mixed PDF.
+Brighter objects, task set 1 and task sets 3/4 are unchanged. BPZ runs
+with the 31 COSMOS templates shipped with RAIL, Benítez's HDFN prior,
+Madau IGM absorption, a 2 % systematic zero-point error per band, and
+per-band zero-point offsets fitted on the task's own training file
+(best template at the known redshift for the rows with i < 23, median of
+m_obs − m_model per band, anchored on i, iterated; offsets of 0.03–0.23
+mag in u, ≤ 0.03 mag elsewhere); non-detections enter with the 1σ
+limits read off the task's test file. The nine bands include Roman Y, J
+and H (filter curves from RAIL). Everything the estimation-only path
+needs is in the bundle; the template–filter tables ship with the package.
+
+**Why.** The trained members extrapolate the training set's N(z) beyond
+i ≈ 24 and get the faint bias wrong where the test population differs
+from the extrapolation (Flagship: +0.03 to +0.06 at i > 24.5 against the
+many-band labels); a template posterior with a magnitude-dependent prior
+does not have that failure mode. Mixed in at equal weight the template
+PDFs also broaden the pool's faint PDFs exactly where they were too
+confident. Equal weight is the a-priori choice: there is no labelled
+faint sample from which a weight could be fitted without using the
+validation data. The cut at 24.5 coincides with the pool's own faint bin
+edges; it was chosen with the validation samples in view, which we state
+plainly, and confirmed on a second representative sample the choice had
+not seen. Learned-where-supported, templates-beyond is a standard
+combination; what is specific here is that the two components are
+mixed at the PDF level so that point estimate and PDF describe the same
+object.
+
+**Validation** (same samples and conventions as the v1.1.0 section;
+corrected |Δz|/(1+z) > 0.2 fraction, v1.1.0 → v1.2.0): Cardinal 1yr
+9.4 → 8.8 % (ddf_00) and 8.1 → 7.4 % (task-set-3 source); Flagship 1yr
+12.2 → 10.3 % and 11.6 → 9.6 %; Cardinal 10yr 3.8 → 2.5 %; Flagship 10yr
+4.0 → 2.4 %. Bias within ±0.005 everywhere (Flagship 1yr from +0.010 to
++0.003), scatter unchanged within 0.002, spectroscopic rows unchanged.
+PIT rows: KS 0.053 → 0.049 (Cardinal 1yr), 0.115 → 0.071 (Flagship 1yr),
+0.082 → 0.091 (Cardinal 10yr), 0.118 → 0.082 (Flagship 10yr);
+PIT-outlier ≤ 0.0044. A BPZ-only faint end would be worse than the
+pool on Cardinal 1yr and over-confident everywhere (PIT exactly 0 or 1
+for 6–20 % of bright hold-out rows); the point-only swap (entry PDFs,
+BPZ point estimate) was equal in points but leaves PDF and point
+inconsistent, so it was not adopted. A dimming-augmentation experiment
+(bright training galaxies copied to fainter magnitudes and re-noised
+with the test file's error model) did not move the faint outlier
+fraction and is not part of the entry.

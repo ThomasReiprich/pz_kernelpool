@@ -7,6 +7,9 @@
 #   COMBOS="1:cardinal:1yr ..." bash submission/build_submission.sh   (a subset of the combinations)
 # v1.1.0 (2026-10-22): task sets 1 and 2 added; the task-set-3/4 files of v1.0.0 are reused as they are when present
 # (they are the scored entry; the 1.0.0 bundles are accepted by the reuse check below).
+# v1.2.0 (2026-10-23): task-set-2 files rebuilt with the faint-end BPZ mixture (KERNELPOOL_REUSE_MEMBERS=1 reuses the trained
+# members of the v1.1.0 work directories; pool, calibration, floor and the BPZ step are rerun); task-set-1 files of v1.1.0 are
+# kept (their bundles record version 1.1.0 and are accepted below); the environment needs pz-rail-bpz / desc-bpz.
 #
 # Per combination: kernel check -> three trainings (parallel) -> pool -> calibration -> submission file + model bundle,
 # work directories under pilot/final/<combination>/ (kept: they hold the V1 hold-out metrics and the run logs).
@@ -30,7 +33,7 @@ export ALL_COMBOS
 python - <<'EOF' || exit 1
 import pickle, sys, os
 from kernelpool import VERSION
-from kernelpool.pipeline import FLOOR_BY_TASKSET
+from kernelpool.pipeline import FLOOR_BY_TASKSET, BPZ_BY_TASKSET
 bad = []
 for c in os.environ["ALL_COMBOS"].split():
     t, s, y = c.split(":")
@@ -40,8 +43,9 @@ for c in os.environ["ALL_COMBOS"].split():
     with open(mdl, "rb") as fh:
         b = pickle.load(fh)
     exact = t in ("1", "2")
-    ok_version = b.get("version") == VERSION or (not exact and b.get("version") == "1.0.0")   # the scored ts3/ts4 entry is kept as it is
-    ok_fit = (b.get("label_mode") == "exact" and b.get("calibration") is not None and b.get("floor_eps") == FLOOR_BY_TASKSET[int(t)]) if exact else b.get("kernel_ok", False)
+    ok_version = b.get("version") == VERSION or (not exact and b.get("version") == "1.0.0") or (t == "1" and b.get("version") == "1.1.0")   # ts3/4: the scored v1.0.0 entry; ts1: unchanged since v1.1.0
+    ok_fit = (b.get("label_mode") == "exact" and b.get("calibration") is not None and b.get("floor_eps") == FLOOR_BY_TASKSET[int(t)]
+              and ((b.get("bpz") or {}).get("cfg") == BPZ_BY_TASKSET[int(t)])) if exact else b.get("kernel_ok", False)
     if "nmax" not in b or b["nmax"] or not ok_version or not ok_fit:
         bad.append(f"{mdl}: nmax={b.get('nmax')} version={b.get('version')} kernel_ok={b.get('kernel_ok')} label_mode={b.get('label_mode')}")
 if bad:

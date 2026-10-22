@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kernelpool"
-version = "1.1.0"
-description = "PZ data challenge entry (task sets 3 and 4): FlexZBoost + GPz pool with weights and calibration fitted through the many-band label-noise kernel"
+version = "1.2.0"
+description = "PZ data challenge entry (all four task sets): FlexZBoost + GPz pool with weights and calibration fitted through the many-band label-noise kernel; BPZ template mixture at the faint end of task set 2"
 readme = "README.md"
 requires-python = ">=3.11"
 # The five pinned packages decide whether the shipped model bundles (pickled FlexZBoost/flexcode/xgboost and GPz models,
@@ -25,10 +25,12 @@ dependencies = [
     "xgboost==3.4.1",
     "pz-rail-flexzboost==2.0.3",
     "pz-rail-gpz_v1==2.0.3",
+    "pz-rail-bpz==2.2.0",
+    "desc-bpz==0.4.0",
 ]
 
 [tool.setuptools.packages.find]
 include = ["kernelpool", "kernelpool.pilot"]
 
 [tool.setuptools.package-data]
-"kernelpool.pilot" = ["catalogs.yaml"]
+"kernelpool.pilot" = ["catalogs.yaml", "bpz_data/SED/*", "bpz_data/FILTER/*", "bpz_data/AB/*"]

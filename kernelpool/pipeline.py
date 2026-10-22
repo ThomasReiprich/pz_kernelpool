@@ -1,4 +1,5 @@
-"""kernelpool: PZ data challenge entry (Bonn, 2026). Version 1.0.0: task sets 3 and 4; 1.1.0: task sets 1 and 2 added.
+"""kernelpool: PZ data challenge entry (Bonn, 2026). Version 1.0.0: task sets 3 and 4; 1.1.0: task sets 1 and 2 added;
+1.2.0: template-fitting (BPZ) mixture at the faint end of task set 2.
 
 Pool of FlexZBoost (two settings) + GPz with per-i-bin weights and a per-i-bin calibration, both fitted by the
 likelihood of the many-band labels of a COSMOS hold-out *through the organizers' label-noise kernel*; raw-pool
@@ -23,6 +24,14 @@ where the true redshift of ~1 % of the objects lies (PIT exactly 1), and the org
 CDF at 1e-4 / 0.9999 of a 100-quantile fit to the PIT values -- breaks down on that spike (0.29 and -0.75 on our
 representative checks for 4.8-5.3 % actual extreme PITs); with the floor it reads 0.0001-0.004. The point estimate
 (raw pool) is untouched. The floor is recorded in the bundle (`floor_eps`) and applied by the estimation-only path.
+Task set 2, v1.2.0 (2026-10-23): fainter than i = 24.5 (BPZ_BY_TASKSET) the shipped PDF is an equal-weight mixture of
+the calibrated, floored pool PDF and a BPZ template-fitting posterior (31 COSMOS templates, HDFN prior, per-band zero
+points fitted on the task's training file, the same floor on the BPZ part), and the point estimate of those objects is
+the median of the mixed PDF; brighter objects are unchanged. The trained members extrapolate the training set's N(z)
+beyond its depth and (on Flagship) get the faint bias wrong, the template posterior does not; the mixture also broadens
+the faint PDFs where the pool's were over-confident. Everything the estimation-only path needs (prior model, zero-point
+offsets, detection limits, settings) is in the bundle (`bpz`); the template-filter tables ship in pilot/bpz_data/.
+Implementation: pilot/bpz_member.py (ours) around RAIL's `pz-rail-bpz` / `desc-bpz`.
 
 This module is a thin driver around the pilot scripts in `kernelpool/pilot/` (the code the entry was developed and
 validated with, copied unchanged): the training path runs them as subprocesses in a work directory laid out the way
@@ -53,7 +62,7 @@ from pathlib import Path
 import numpy as np
 
 PILOT = Path(__file__).resolve().parent / "pilot"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 SEED = 42
 POINT = ["--point", "raw_mean", "--point-faint", "raw_median", "--point-split", "23"]
 E4_XGB = ["--xgb-depth", "6", "--xgb-trees", "300", "--xgb-lr", "0.1", "--xgb-subsample", "0.8"]
@@ -70,6 +79,10 @@ MEMBERS_BY_TASKSET = {1: MEMBERS_TS1, 2: MEMBERS_TS2, 3: MEMBERS, 4: MEMBERS}
 POINT_BY_TASKSET = {1: ["--point", "raw_mean", "--point-faint", "raw_median", "--point-split", "99"],   # i < 23 throughout: the mean
                     2: POINT, 3: POINT, 4: POINT}
 FLOOR_BY_TASKSET = {1: None, 2: 0.03, 3: None, 4: None}     # uniform floor (mass fraction) mixed into the final PDFs; see the docstring
+# v1.2.0: BPZ mixture at the faint end (task set 2 only); keys as pilot/bpz_member.py's BPZ_DEFAULTS
+BPZ_BY_TASKSET = {1: None, 3: None, 4: None,
+                  2: dict(cut=24.5, weight=0.5, spectra="COSMOS_seds.list", nt_array=[7, 12, 12], zp_imax=23.0, zp_err=0.02,
+                          madau="yes", zp_iter=4, zp_tol=0.003)}
 POOL_LABEL = "E1E4gpzS"
 NAME_RE = re.compile(r"pz_challenge_taskset_(\d)_(cardinal|flagship)_(?:training|test)_(1yr|10yr)\.hdf5$")
 
@@ -251,11 +264,17 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
         floor_submission_file(output_file, floor_eps)
     _log(f"submission -> {output_file}" + (f" (uniform floor {floor_eps})" if floor_eps else ""))
 
+    # 4b. v1.2.0: BPZ mixture at the faint end (task set 2): zero points from the training file, BPZ on the test file,
+    #     mixed into the floored PDFs for i >= cut, point estimate = median of the mixed PDF there
+    bpz_cfg = BPZ_BY_TASKSET.get(taskset)
+    bpz_info = bpz_mix_submission(output_file, train_file, test_file, sim, bpz_cfg, floor_eps, base / "bpz") if bpz_cfg else None
+
     # 5. model bundle for the estimation-only path
     info = dict(version=VERSION, taskset=taskset, sim=sim, scenario=scen, kernel_ok=ok, kernel_check=why, nmax=nmax,
-                label_mode="exact" if exact else "kernel", calibrated=calibrated, floor_eps=floor_eps, workdir=str(base), submission=str(output_file))
+                label_mode="exact" if exact else "kernel", calibrated=calibrated, floor_eps=floor_eps, workdir=str(base), submission=str(output_file),
+                bpz=(None if bpz_info is None else dict(cfg=bpz_cfg, zp_offsets=[float(v) for v in bpz_info["zp_offsets"]], limits=bpz_info["limits"], n_faint=bpz_info["n_faint"])))
     if model_file:
-        bundle = build_bundle(base, taskset, sim, scen, ok, nmax, exact=exact)
+        bundle = build_bundle(base, taskset, sim, scen, ok, nmax, exact=exact, bpz=bpz_info)
         Path(model_file).parent.mkdir(parents=True, exist_ok=True)
         with open(model_file, "wb") as fh:
             pickle.dump(bundle, fh, protocol=pickle.HIGHEST_PROTOCOL)
@@ -265,6 +284,70 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
     if not keep_workdir and workdir is None and not os.environ.get("KERNELPOOL_WORKDIR"):
         shutil.rmtree(base, ignore_errors=True)
     return info
+
+
+def _apply_catalog(sim: str) -> None:
+    from rail.utils import catalog_utils
+    catalog_utils.clear()
+    catalog_utils.load_yaml(str(PILOT / "catalogs.yaml"))
+    catalog_utils.apply(f"{sim}_roman_rubin")
+
+
+def _mag_i_for(test_path: Path, ids: np.ndarray) -> np.ndarray:
+    """i magnitudes of the test rows in the order of the submission file's object ids (NaN -> 26.0, as estimate_only)."""
+    import tables_io
+    t = tables_io.read(str(test_path))
+    tid = np.asarray(t["object_id"]).astype(int); mi = np.asarray(t["mag_i_lsst"], float)
+    if not np.array_equal(tid, ids):
+        pos = {o: k for k, o in enumerate(tid)}
+        mi = mi[np.array([pos[o] for o in ids])]
+    mi = mi.copy(); mi[~np.isfinite(mi)] = 26.0
+    return mi
+
+
+def bpz_mix_submission(output_file: Path, train_file: Path, test_file: Path, sim: str, cfg: dict, floor_eps, workdir: Path) -> dict:
+    """v1.2.0 training-path step (task set 2): fit the BPZ zero points on the training file, run BPZ on the test file and
+    rewrite output_file with the faint-end mixture (pilot/bpz_member.py). Returns what the bundle must carry."""
+    import h5py
+    import qp
+    sys.path.insert(0, str(PILOT))
+    import bpz_member as bm
+    from pz_pilot import ZMIN, ZMAX, NZBINS
+    from calibrate_pdfs import trapezoid
+    grid = dict(zmin=ZMIN, zmax=ZMAX, nzbins=NZBINS)
+    zgrid = np.linspace(ZMIN, ZMAX, NZBINS)
+    workdir = Path(workdir); workdir.mkdir(parents=True, exist_ok=True)
+    _apply_catalog(sim)
+    bands, err_bands, _, _ = bm.band_setup()
+    test = bm._as_float_table(test_file)
+    limits = bm.detection_limits(test, bands, err_bands)
+    _log("bpz: 1-sigma detection limits from the test file: " + ", ".join(f"{b.split('_')[1]} {v:.2f}" for b, v in limits.items()))
+    model = bm.hdfn_model(cfg["nt_array"], len(bands))
+    train = bm._as_float_table(train_file)
+    zp = bm.fit_zeropoints(train, model, cfg, grid, limits, workdir, log=_log)
+    cwd = os.getcwd(); os.chdir(workdir)          # RAIL writes stage outputs into the working directory
+    try:
+        p_bpz = bm.bpz_pdfs(test_file, model, cfg, grid, limits, zp, workdir, tag="test")
+    finally:
+        os.chdir(cwd)
+    with h5py.File(output_file) as fh:
+        x = fh["meta/xvals"][:].ravel(); y = fh["data/yvals"][:]; anc = {k: fh["ancil"][k][:] for k in fh["ancil"]}
+    if not (len(x) == len(zgrid) and np.allclose(x, zgrid)):
+        raise RuntimeError("submission grid differs from the kernelpool grid")
+    if len(p_bpz) != len(y):
+        raise RuntimeError(f"bpz: {len(p_bpz)} PDFs for {len(y)} submission rows")
+    ids = np.asarray(anc["object_id"]).ravel().astype(int)
+    mi = _mag_i_for(test_file, ids)
+    pe = np.maximum(y, 0); pe = pe / trapezoid(pe, zgrid, axis=1)[:, None]
+    pp = bm.mix_pdfs(pe, p_bpz, zgrid, mi, cfg["cut"], cfg["weight"], floor_eps)
+    faint = mi >= cfg["cut"]
+    zmode = np.asarray(anc["zmode"], float).ravel().copy()
+    zmode[faint] = bm.median_of_pdf(pp[faint], zgrid)
+    anc["zmode"] = zmode[:, None]; anc["zmode_pdf"] = zgrid[np.argmax(pp, axis=1)][:, None]; anc["zmean"] = trapezoid(pp * zgrid, zgrid, axis=1)[:, None]
+    ens = qp.Ensemble(qp.interp, data=dict(xvals=zgrid, yvals=pp)); ens.set_ancil(anc)
+    output_file.unlink(); ens.write_to(str(output_file))
+    _log(f"bpz mixture (w={cfg['weight']}, i >= {cfg['cut']}): {int(faint.sum())} of {len(mi)} objects; point estimate = median of the mixed PDF there -> {output_file}")
+    return dict(zp_offsets=zp, limits=limits, model=model, n_faint=int(faint.sum()))
 
 
 def _cal_to_plain(cal: dict) -> dict:
@@ -292,7 +375,7 @@ def _cal_from_plain(d: dict):
     return one(d)
 
 
-def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool, nmax, exact: bool = False) -> dict:
+def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool, nmax, exact: bool = False, bpz: dict | None = None) -> dict:
     """Everything the estimation-only path needs: member models (bytes), their stage settings, pool weights,
     calibration (parameters + PIT maps) and the point-estimate rule."""
     sys.path.insert(0, str(PILOT))
@@ -317,7 +400,11 @@ def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool,
                 grid=dict(zmin=ZMIN, zmax=ZMAX, nzbins=NZBINS), seed=SEED, catalog=f"{sim}_roman_rubin",
                 members=members, pool_weights=weights, calibration=cal, kernel_ok=kernel_ok, label_mode="exact" if exact else "kernel",
                 floor_eps=FLOOR_BY_TASKSET[taskset], pool_objective="kernel" if kernel_ok else "label", nmax=nmax,
-                point=dict(bright=pt[1].split("_", 1)[1], faint=pt[3].split("_", 1)[1], split=float(pt[5])), created=time.strftime("%Y-%m-%d %H:%M:%S"))
+                point=dict(bright=pt[1].split("_", 1)[1], faint=pt[3].split("_", 1)[1], split=float(pt[5])), created=time.strftime("%Y-%m-%d %H:%M:%S"),
+                bpz=(None if bpz is None else dict(cfg=dict(BPZ_BY_TASKSET[taskset]), zp_offsets=[float(v) for v in bpz["zp_offsets"]],
+                                                   limits={k: float(v) for k, v in bpz["limits"].items()},
+                                                   model=dict(priormodel={k: (np.asarray(v, float) if isinstance(v, np.ndarray) else v) for k, v in bpz["model"]["priormodel"].items()},
+                                                              zp_offsets=dict(offsets=np.zeros(len(bpz["zp_offsets"])))))))
 
 
 def estimate_only(model_file, test_file, output_file, workdir=None) -> dict:
@@ -383,6 +470,14 @@ def estimate_only(model_file, test_file, output_file, workdir=None) -> dict:
         pp = apply_floor(pp, zgrid, b.get("floor_eps"))      # v1.1.0 bundles record the floor; v1.0.0 bundles have none
         pt = b["point"]
         zmode = np.where(mi < pt["split"], point_estimate(p, zgrid, pt["bright"]), point_estimate(p, zgrid, pt["faint"]))
+        if b.get("bpz"):                                    # v1.2.0: faint-end BPZ mixture, exactly as the training path
+            import bpz_member as bm
+            bz = b["bpz"]; cfg = bz["cfg"]
+            p_bpz = bm.bpz_pdfs(test_file, bz["model"], cfg, g, bz["limits"], bz["zp_offsets"], tmp, tag="est")
+            pp = bm.mix_pdfs(pp, p_bpz, zgrid, mi, cfg["cut"], cfg["weight"], b.get("floor_eps"))
+            faint = mi >= cfg["cut"]
+            zmode = zmode.copy(); zmode[faint] = bm.median_of_pdf(pp[faint], zgrid)
+            _log(f"bpz mixture (w={cfg['weight']}, i >= {cfg['cut']}): {int(faint.sum())} of {len(mi)} objects")
         out = qp.Ensemble(qp.interp, data=dict(xvals=zgrid, yvals=pp))
         out.set_ancil(dict(object_id=ids, zmode=zmode[:, None], zmode_pdf=zgrid[np.argmax(pp, axis=1)][:, None],
                            zmode_raw=zgrid[np.argmax(p, axis=1)][:, None], zmean=trapezoid(pp * zgrid, zgrid, axis=1)[:, None]))
@@ -390,7 +485,7 @@ def estimate_only(model_file, test_file, output_file, workdir=None) -> dict:
         if output_file.exists():
             output_file.unlink()
         out.write_to(str(output_file))
-        _log(f"submission -> {output_file} ({'calibrated' if b['calibration'] else 'raw pool'}" + (f", uniform floor {b['floor_eps']}" if b.get("floor_eps") else "") + ")")
+        _log(f"submission -> {output_file} ({'calibrated' if b['calibration'] else 'raw pool'}" + (f", uniform floor {b['floor_eps']}" if b.get("floor_eps") else "") + (", bpz mixture" if b.get("bpz") else "") + ")")
     finally:
         os.chdir(cwd)
         if workdir is None:
