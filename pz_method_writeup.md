@@ -121,6 +121,20 @@ were used for local validation of task set 2 only, never in training,
 weights or calibration. The task-set-3/4 files are those of v1.0.0,
 unchanged.
 
+**A uniform floor on task set 2.** The task-set-2 test sample extends two
+magnitudes beyond the training support, and an object without training
+support can be anywhere on the grid; every task-set-2 PDF therefore gets
+3 % of its mass spread uniformly over 0–3 (after the calibration; the
+point estimate is untouched). The practical reason: the narrow 10yr PDFs
+otherwise leave no mass where the true redshift of about 1 % of the
+objects lies, the PIT is exactly 1 there, and the scored PIT-outlier
+metric — the CDF at 1e-4 and 0.9999 of a 100-quantile fit to the PIT
+values — breaks down on that spike (0.29 and −0.75 on our representative
+checks for an actual extreme-PIT fraction of 5 %); with the floor it
+reads 0.0001–0.004 and the KS and Anderson statistics improve as well.
+The floor is recorded in the bundle and applied by the estimation-only
+path.
+
 **No PIT map on task sets 1/2.** The scored Anderson k-sample statistic
 is scipy's standardised statistic, which fluctuates around zero for a
 uniform PIT, and the bracket starts at 0: with the PIT map the task-set-1
@@ -137,18 +151,22 @@ every scored metric inside the innermost bracket by a factor ≥ 1.5. The
 pool is GPz-dominated (weights 0.55–0.67) except on Flagship 10yr (0.40);
 the regularised FlexZBoost gets no weight on a representative sample.
 
-**Validation, task set 2** (Cardinal 1yr: 50k representative rows of the
-NZ challenge's ddf_00 field with many-band labels, PZ rows removed, label
-noise corrected with the documented model; 13k spectroscopic rows against
-true z): the four PIT rows are at full points with or without calibration
-(GPz's honest widths carry the pool off-support; the calibration lowers
-the PIT-outlier fraction from 0.04 to 0.01); the bias is −0.005 to −0.010;
-the scatter is 0.083 (1 point of 3) and the |Δz|/(1+z) > 0.2 fraction
-9.4 % after the correction (at the 10 % edge), both set by the 59 % of
-the test sample fainter than i = 24, where 74 % of the objects have no
-training object nearby. Pool variants (unweighted members, GPz alone)
-and point rules (mean, mode) were equal or worse; the mode doubles the
-outlier fraction. Expected task-set-2 score 0.81–0.86, i.e. 17–18 of 21
-per run; the spectroscopic subset scores 21/21. Stated plainly: a
+**Validation, task set 2** (representative samples with many-band labels
+and the PZ rows removed by position: the NZ challenge's ddf_00 field for
+1yr, the many-band rows of the task-set-3 training files for 1yr and 10yr;
+label noise corrected with the documented model; spectroscopic rows
+against true z): the spectroscopic rows score 21/21 everywhere. On the
+full samples the bias is within ±0.01 (Flagship 1yr at the edge: +0.010),
+the scatter 0.080–0.090 at 1yr and 0.041–0.042 at 10yr, the |Δz|/(1+z) >
+0.2 fraction 8–12 % at 1yr and 3.8–4.0 % at 10yr, and the PIT rows are at
+full points (KS 0.04–0.11, PIT-outlier ≤ 0.004 with the floor) — about
+17–18 (1yr) and 19 (10yr) of 21 points per run. The limit is the 59 % of
+the test sample fainter than i = 24: at 1yr their colours are
+noise-dominated (median errors 0.3–0.6 mag at i = 24.5–25), and 50–100 %
+of them have no training object nearby in (i, colours), 35–80 % none even
+in colours alone; the training prior at its faint edge agrees with the
+representative N(z) to i = 24 and is extrapolated beyond. Pool variants
+(unweighted members, GPz alone, fixed weights) and point rules (mean,
+mode, mass modes) were equal or worse. Stated plainly: a
 spectroscopically selected training set does not constrain the faint
 half of this test sample, and no estimator we tried changes that.

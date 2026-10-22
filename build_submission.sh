@@ -30,6 +30,7 @@ export ALL_COMBOS
 python - <<'EOF' || exit 1
 import pickle, sys, os
 from kernelpool import VERSION
+from kernelpool.pipeline import FLOOR_BY_TASKSET
 bad = []
 for c in os.environ["ALL_COMBOS"].split():
     t, s, y = c.split(":")
@@ -40,7 +41,7 @@ for c in os.environ["ALL_COMBOS"].split():
         b = pickle.load(fh)
     exact = t in ("1", "2")
     ok_version = b.get("version") == VERSION or (not exact and b.get("version") == "1.0.0")   # the scored ts3/ts4 entry is kept as it is
-    ok_fit = (b.get("label_mode") == "exact" and b.get("calibration") is not None) if exact else b.get("kernel_ok", False)
+    ok_fit = (b.get("label_mode") == "exact" and b.get("calibration") is not None and b.get("floor_eps") == FLOOR_BY_TASKSET[int(t)]) if exact else b.get("kernel_ok", False)
     if "nmax" not in b or b["nmax"] or not ok_version or not ok_fit:
         bad.append(f"{mdl}: nmax={b.get('nmax')} version={b.get('version')} kernel_ok={b.get('kernel_ok')} label_mode={b.get('label_mode')}")
 if bad:

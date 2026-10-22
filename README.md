@@ -8,7 +8,8 @@ of a COSMOS hold-out seen through the organizers' label error model
 (rectangular kernel, true redshift on the 0–3 PDF grid, labels on 0–6);
 raw-pool point estimate. On task sets 1 and 2 (exact labels) the same
 pool is fitted against a hold-out of the training file, without the
-kernel and without the PIT map (see the write-up). Method:
+kernel and without the PIT map; task set 2 gets a 3 % uniform floor in
+every PDF (see the write-up). Method:
 `pz_method_writeup.md`.
 
 Code and text written by Claude (Fable models); direction, critical review

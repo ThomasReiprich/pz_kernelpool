@@ -16,6 +16,13 @@ bracket 0 <= value <= 1000) turns negative in ~70 % of hold-out draws, i.e. a pe
 score zero on that row (task set 1 Flagship 1yr: KS 0.007 / statistic -0.7 with the map, KS 0.019 / +4 without; PIT
 extreme fractions 10.4 % vs 10.1 %, so nothing is lost). KERNELPOOL_REUSE_MEMBERS=1 reuses member run directories
 that already hold their model and outputs in the work directory (our build streams on a shared machine).
+Task set 2 additionally gets a uniform floor (FLOOR_BY_TASKSET: 3 % of the mass spread evenly over the grid, mixed
+into every calibrated PDF; v1.1.0, 2026-10-22): its test sample extends two magnitudes beyond the training support,
+and an object without training support can be anywhere on the grid. Without it the narrow 10yr PDFs leave no mass
+where the true redshift of ~1 % of the objects lies (PIT exactly 1), and the organizers' PIT-outlier metric -- the
+CDF at 1e-4 / 0.9999 of a 100-quantile fit to the PIT values -- breaks down on that spike (0.29 and -0.75 on our
+representative checks for 4.8-5.3 % actual extreme PITs); with the floor it reads 0.0001-0.004. The point estimate
+(raw pool) is untouched. The floor is recorded in the bundle (`floor_eps`) and applied by the estimation-only path.
 
 This module is a thin driver around the pilot scripts in `kernelpool/pilot/` (the code the entry was developed and
 validated with, copied unchanged): the training path runs them as subprocesses in a work directory laid out the way
@@ -62,6 +69,7 @@ MEMBERS_TS2 = MEMBERS
 MEMBERS_BY_TASKSET = {1: MEMBERS_TS1, 2: MEMBERS_TS2, 3: MEMBERS, 4: MEMBERS}
 POINT_BY_TASKSET = {1: ["--point", "raw_mean", "--point-faint", "raw_median", "--point-split", "99"],   # i < 23 throughout: the mean
                     2: POINT, 3: POINT, 4: POINT}
+FLOOR_BY_TASKSET = {1: None, 2: 0.03, 3: None, 4: None}     # uniform floor (mass fraction) mixed into the final PDFs; see the docstring
 POOL_LABEL = "E1E4gpzS"
 NAME_RE = re.compile(r"pz_challenge_taskset_(\d)_(cardinal|flagship)_(?:training|test)_(1yr|10yr)\.hdf5$")
 
@@ -104,6 +112,28 @@ def _run(cmd: list[str], log_path: Path, env: dict | None = None) -> None:
         raise RuntimeError(f"command failed ({r.returncode}): {' '.join(cmd)}\n  see {log_path}")
 
 
+def apply_floor(p: np.ndarray, zgrid: np.ndarray, eps) -> np.ndarray:
+    """(1 - eps) p + eps / (zmax - zmin): a uniform floor over the grid (p normalised to unit integral on zgrid)."""
+    if not eps:
+        return p
+    return (1.0 - eps) * p + eps / (zgrid[-1] - zgrid[0])
+
+
+def floor_submission_file(path: Path, eps) -> None:
+    """Rewrite a qp.interp submission file with the floor mixed into its PDFs (ancil unchanged)."""
+    import h5py
+    import qp
+    with h5py.File(path) as fh:
+        x = fh["meta/xvals"][:].ravel(); y = fh["data/yvals"][:]; anc = {k: fh["ancil"][k][:] for k in fh["ancil"]}
+    y = np.maximum(y, 0)
+    trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+    y = y / trapz(y, x, axis=1)[:, None]
+    ens = qp.Ensemble(qp.interp, data=dict(xvals=x, yvals=apply_floor(y, x, eps)))
+    ens.set_ancil(anc)
+    path.unlink()
+    ens.write_to(str(path))
+
+
 def kernel_check(check_json: Path, min_n: int = 200, n_sigma: float = 3.0) -> tuple[bool, str]:
     """Decide from manyband_mixture.py check's JSON whether the training file's labels follow the organizers'
     kernel: bins with >= min_n spec-z/many-band pairs must agree within n_sigma in scatter and outlier fraction
@@ -137,6 +167,7 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
         raise ValueError(f"taskset {taskset} training file {'without' if exact else 'with'} a redshift_manyband column: not the expected layout")
     members = MEMBERS_BY_TASKSET[taskset]
     point = POINT_BY_TASKSET[taskset]
+    floor_eps = FLOOR_BY_TASKSET[taskset]
     if nmax is None:
         nmax = int(os.environ.get("PZDC_CI_MAX_TRAIN", "0")) or None
     base = Path(workdir or os.environ.get("KERNELPOOL_WORKDIR") or tempfile.mkdtemp(prefix="kernelpool_")).resolve()   # absolute: the pilot scripts chdir
@@ -216,11 +247,13 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
     src = sub_dir / f"pz_challenge_taskset_{taskset}_{sim}_pz_estimate_{scen}.hdf5"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(src, output_file)
-    _log(f"submission -> {output_file}")
+    if floor_eps:
+        floor_submission_file(output_file, floor_eps)
+    _log(f"submission -> {output_file}" + (f" (uniform floor {floor_eps})" if floor_eps else ""))
 
     # 5. model bundle for the estimation-only path
     info = dict(version=VERSION, taskset=taskset, sim=sim, scenario=scen, kernel_ok=ok, kernel_check=why, nmax=nmax,
-                label_mode="exact" if exact else "kernel", calibrated=calibrated, workdir=str(base), submission=str(output_file))
+                label_mode="exact" if exact else "kernel", calibrated=calibrated, floor_eps=floor_eps, workdir=str(base), submission=str(output_file))
     if model_file:
         bundle = build_bundle(base, taskset, sim, scen, ok, nmax, exact=exact)
         Path(model_file).parent.mkdir(parents=True, exist_ok=True)
@@ -283,7 +316,7 @@ def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool,
     return dict(name="kernelpool", version=VERSION, taskset=taskset, sim=sim, scenario=scen,
                 grid=dict(zmin=ZMIN, zmax=ZMAX, nzbins=NZBINS), seed=SEED, catalog=f"{sim}_roman_rubin",
                 members=members, pool_weights=weights, calibration=cal, kernel_ok=kernel_ok, label_mode="exact" if exact else "kernel",
-                pool_objective="kernel" if kernel_ok else "label", nmax=nmax,
+                floor_eps=FLOOR_BY_TASKSET[taskset], pool_objective="kernel" if kernel_ok else "label", nmax=nmax,
                 point=dict(bright=pt[1].split("_", 1)[1], faint=pt[3].split("_", 1)[1], split=float(pt[5])), created=time.strftime("%Y-%m-%d %H:%M:%S"))
 
 
@@ -347,6 +380,7 @@ def estimate_only(model_file, test_file, output_file, workdir=None) -> dict:
         p = normalise(np.einsum("kim,ik->im", P, wmat), zgrid)        # the raw pool (ts3_ensemble.pool)
         pd = (p / p.sum(axis=1, keepdims=True)) / (zgrid[1] - zgrid[0])   # exactly what apply --iters 0 produces (deconvolve, 0 iterations)
         pp = apply_calibration(pd, zgrid, _cal_from_plain(b["calibration"]["cal"]), with_pit_map=b["calibration"]["pit_map"], mag_i=mi) if b["calibration"] else pd
+        pp = apply_floor(pp, zgrid, b.get("floor_eps"))      # v1.1.0 bundles record the floor; v1.0.0 bundles have none
         pt = b["point"]
         zmode = np.where(mi < pt["split"], point_estimate(p, zgrid, pt["bright"]), point_estimate(p, zgrid, pt["faint"]))
         out = qp.Ensemble(qp.interp, data=dict(xvals=zgrid, yvals=pp))
@@ -356,7 +390,7 @@ def estimate_only(model_file, test_file, output_file, workdir=None) -> dict:
         if output_file.exists():
             output_file.unlink()
         out.write_to(str(output_file))
-        _log(f"submission -> {output_file} ({'calibrated' if b['calibration'] else 'raw pool'})")
+        _log(f"submission -> {output_file} ({'calibrated' if b['calibration'] else 'raw pool'}" + (f", uniform floor {b['floor_eps']}" if b.get("floor_eps") else "") + ")")
     finally:
         os.chdir(cwd)
         if workdir is None:
