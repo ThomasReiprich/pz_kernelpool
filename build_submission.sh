@@ -1,8 +1,12 @@
 #!/bin/bash
-# Build the kernelpool submission with the shipped package = the final regeneration of the eight combinations
-# (recipe S, seeded GPz, label clipping, rectangular label kernel) with exactly the code that goes into the PR. Run from
-# the DESC_NZ_Challenge folder, desc-pz active, after `pip install -e submission` (once):
-#   bash submission/build_submission.sh            (about 1 h 15; idempotent: a combination whose files exist is skipped)
+# Build the kernelpool submission with the shipped package = the final regeneration of the sixteen combinations
+# (recipe S, seeded GPz, label clipping, rectangular label kernel; task sets 1/2 in exact-label mode, v1.1.0) with exactly
+# the code that goes into the PR. Run from the DESC_NZ_Challenge folder, desc-pz active, with the package importable
+# (`pip install -e submission` once, or PYTHONPATH=$PWD/submission):
+#   bash submission/build_submission.sh            (idempotent: a combination whose files exist is skipped)
+#   COMBOS="1:cardinal:1yr ..." bash submission/build_submission.sh   (a subset of the combinations)
+# v1.1.0 (2026-10-22): task sets 1 and 2 added; the task-set-3/4 files of v1.0.0 are reused as they are when present
+# (they are the scored entry; the 1.0.0 bundles are accepted by the reuse check below).
 #
 # Per combination: kernel check -> three trainings (parallel) -> pool -> calibration -> submission file + model bundle,
 # work directories under pilot/final/<combination>/ (kept: they hold the V1 hold-out metrics and the run logs).
@@ -18,22 +22,27 @@ export PZDC_CI_MAX_TRAIN=0          # never a subsampled production build (revie
 unset KERNELPOOL_FORCE_KERNEL_FAIL
 OUT=submissions/kernelpool
 mkdir -p $OUT/outputs_2 pilot/final logs
-COMBOS="3:cardinal:1yr 3:cardinal:10yr 3:flagship:1yr 3:flagship:10yr 4:cardinal:1yr 4:cardinal:10yr 4:flagship:1yr 4:flagship:10yr"
+ALL_COMBOS="1:cardinal:1yr 1:cardinal:10yr 1:flagship:1yr 1:flagship:10yr 2:cardinal:1yr 2:cardinal:10yr 2:flagship:1yr 2:flagship:10yr 3:cardinal:1yr 3:cardinal:10yr 3:flagship:1yr 3:flagship:10yr 4:cardinal:1yr 4:cardinal:10yr 4:flagship:1yr 4:flagship:10yr"
+COMBOS="${COMBOS:-$ALL_COMBOS}"
+export ALL_COMBOS
 
 # an existing file is reused only if its bundle is a full-size build of this package version (review item 3)
 python - <<'EOF' || exit 1
 import pickle, sys, os
 from kernelpool import VERSION
 bad = []
-for c in "3:cardinal:1yr 3:cardinal:10yr 3:flagship:1yr 3:flagship:10yr 4:cardinal:1yr 4:cardinal:10yr 4:flagship:1yr 4:flagship:10yr".split():
+for c in os.environ["ALL_COMBOS"].split():
     t, s, y = c.split(":")
     mdl = f"submissions/kernelpool/pz_challenge_taskset_{t}_{s}_pz_model_{y}.pkl"
     if not os.path.exists(mdl):
         continue
     with open(mdl, "rb") as fh:
         b = pickle.load(fh)
-    if "nmax" not in b or b["nmax"] or b.get("version") != VERSION or not b.get("kernel_ok", False):
-        bad.append(f"{mdl}: nmax={b.get('nmax')} version={b.get('version')} kernel_ok={b.get('kernel_ok')}")
+    exact = t in ("1", "2")
+    ok_version = b.get("version") == VERSION or (not exact and b.get("version") == "1.0.0")   # the scored ts3/ts4 entry is kept as it is
+    ok_fit = (b.get("label_mode") == "exact" and b.get("calibration") is not None) if exact else b.get("kernel_ok", False)
+    if "nmax" not in b or b["nmax"] or not ok_version or not ok_fit:
+        bad.append(f"{mdl}: nmax={b.get('nmax')} version={b.get('version')} kernel_ok={b.get('kernel_ok')} label_mode={b.get('label_mode')}")
 if bad:
     print("existing files that must not be reused (subsampled, other version, or fallback build) -- move them away first:\n  " + "\n  ".join(bad))
     sys.exit(1)
@@ -66,7 +75,7 @@ train_one 3 cardinal 1yr submissions/kernelpool_repeat pilot/final/ts3_cardinal_
 
 echo "[$(date +%H:%M:%S)] checks: validator, PDF sanity, estimation-only re-application, repeat training, comparison with the previous files"
 python - <<'EOF' 2>&1 | tee logs/build_checks.out || exit 1
-import sys, glob, json, pickle, hashlib, numpy as np, h5py
+import sys, os, glob, json, pickle, hashlib, numpy as np, h5py
 sys.path.insert(0, "repos/pz_data_challenge/src")
 from pz_data_challenge import submit_utils
 from kernelpool import estimate_only
@@ -85,9 +94,11 @@ def sane(est, test):
                   zmode_in_grid=bool(zm.min() >= 0 and zm.max() <= 3.0))
     return checks, float(np.abs(norm - 1).max())
 
-for c in "3:cardinal:1yr 3:cardinal:10yr 3:flagship:1yr 3:flagship:10yr 4:cardinal:1yr 4:cardinal:10yr 4:flagship:1yr 4:flagship:10yr".split():
+for c in os.environ["ALL_COMBOS"].split():
     t, s, y = c.split(":")
     est = f"submissions/kernelpool/pz_challenge_taskset_{t}_{s}_pz_estimate_{y}.hdf5"
+    if not os.path.exists(est):
+        print(f"SKIP ts{t} {s} {y}: not built"); continue
     mdl = f"submissions/kernelpool/pz_challenge_taskset_{t}_{s}_pz_model_{y}.pkl"
     test = f"data/pz/public/pz_challenge_taskset_{t}_{s}_test_{y}.hdf5"
     flags = submit_utils.check_pz_submission_file(est, test)

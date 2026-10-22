@@ -1,8 +1,21 @@
-"""kernelpool: PZ data challenge entry for task sets 3 and 4 (Bonn, 2026).
+"""kernelpool: PZ data challenge entry (Bonn, 2026). Version 1.0.0: task sets 3 and 4; 1.1.0: task sets 1 and 2 added.
 
 Pool of FlexZBoost (two settings) + GPz with per-i-bin weights and a per-i-bin calibration, both fitted by the
 likelihood of the many-band labels of a COSMOS hold-out *through the organizers' label-noise kernel*; raw-pool
 point estimate (mean for i < 23, interpolated median above). Method description: pz_method_writeup.md.
+
+Task sets 1 and 2 (v1.1.0, 2026-10-22): their training files carry exact redshifts only (no `redshift_manyband`
+column). The same pool is then fitted in "exact-label mode": no kernel check, pool weights by the likelihood of the
+held-out true redshifts, calibration against them (the pilot's exact-label path, `--cal-labels mixed`, with every row
+exact), V1 = a 20 % random hold-out of the training file. Nothing but the task set's own training file and the
+unlabelled test photometry enters the fit (the NZ challenge's many-band data are used for local validation only,
+never here). Members, FlexZBoost weighting variant and point rule per task set: MEMBERS_BY_TASKSET / POINT_BY_TASKSET.
+On task sets 1/2 the calibration is the tail mixing and exponent only, WITHOUT the PIT map: with exact labels the map
+makes the PIT so close to uniform that scipy's standardised Anderson k-sample statistic (one of the scored metrics,
+bracket 0 <= value <= 1000) turns negative in ~70 % of hold-out draws, i.e. a perfectly calibrated PDF set would
+score zero on that row (task set 1 Flagship 1yr: KS 0.007 / statistic -0.7 with the map, KS 0.019 / +4 without; PIT
+extreme fractions 10.4 % vs 10.1 %, so nothing is lost). KERNELPOOL_REUSE_MEMBERS=1 reuses member run directories
+that already hold their model and outputs in the work directory (our build streams on a shared machine).
 
 This module is a thin driver around the pilot scripts in `kernelpool/pilot/` (the code the entry was developed and
 validated with, copied unchanged): the training path runs them as subprocesses in a work directory laid out the way
@@ -33,7 +46,7 @@ from pathlib import Path
 import numpy as np
 
 PILOT = Path(__file__).resolve().parent / "pilot"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 SEED = 42
 POINT = ["--point", "raw_mean", "--point-faint", "raw_median", "--point-split", "23"]
 E4_XGB = ["--xgb-depth", "6", "--xgb-trees", "300", "--xgb-lr", "0.1", "--xgb-subsample", "0.8"]
@@ -42,6 +55,13 @@ MEMBERS = (   # (run-dir label, variant, estimator, extra training arguments)  -
     ("E4_magerr_reg", "union_w", "flexzboost", ["--include-mag-err"] + E4_XGB),
     ("gpz_seeded", "union", "gpz", []),
 )
+# task sets 1/2 (exact labels): the same three members; the FlexZBoost members unweighted on task set 1 (representative
+# training sample) and weighted towards the test photometry on task set 2 (union_w in exact-label mode, pz_ts3_experiment.py)
+MEMBERS_TS1 = tuple((lab, "union", est, extra) for lab, _, est, extra in MEMBERS)
+MEMBERS_TS2 = MEMBERS
+MEMBERS_BY_TASKSET = {1: MEMBERS_TS1, 2: MEMBERS_TS2, 3: MEMBERS, 4: MEMBERS}
+POINT_BY_TASKSET = {1: ["--point", "raw_mean", "--point-faint", "raw_median", "--point-split", "99"],   # i < 23 throughout: the mean
+                    2: POINT, 3: POINT, 4: POINT}
 POOL_LABEL = "E1E4gpzS"
 NAME_RE = re.compile(r"pz_challenge_taskset_(\d)_(cardinal|flagship)_(?:training|test)_(1yr|10yr)\.hdf5$")
 
@@ -110,6 +130,13 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
     t2, s2, y2 = parse_name(test_file)
     if (t2, s2, y2) != (taskset, sim, scen):
         raise ValueError(f"training file is taskset {taskset} {sim} {scen}, test file is {t2} {s2} {y2}")
+    import h5py
+    with h5py.File(train_file) as fh:
+        exact = "redshift_manyband" not in fh
+    if exact != (taskset in (1, 2)):
+        raise ValueError(f"taskset {taskset} training file {'without' if exact else 'with'} a redshift_manyband column: not the expected layout")
+    members = MEMBERS_BY_TASKSET[taskset]
+    point = POINT_BY_TASKSET[taskset]
     if nmax is None:
         nmax = int(os.environ.get("PZDC_CI_MAX_TRAIN", "0")) or None
     base = Path(workdir or os.environ.get("KERNELPOOL_WORKDIR") or tempfile.mkdtemp(prefix="kernelpool_")).resolve()   # absolute: the pilot scripts chdir
@@ -122,18 +149,29 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
     py = sys.executable
     tsy = ["--taskset", str(taskset), "--sim", sim, "--scenario", scen]
 
-    # 1. label-kernel check on the training file (spec-z / many-band overlap rows)
-    _run([py, str(PILOT / "manyband_mixture.py"), "check", "--base", str(base)] + tsy + ["--ndraw", "20", "--seed", str(SEED)],
-         logs / "kernel_check.out")
-    ok, why = kernel_check(base / "pilot" / "runs" / f"label_model_check_pz_challenge_taskset_{taskset}_{sim}_training_{scen}.json")
-    if os.environ.get("KERNELPOOL_FORCE_KERNEL_FAIL"):      # test switch: exercise the kernel-free fallback on data that would pass
-        ok, why = False, "forced by KERNELPOOL_FORCE_KERNEL_FAIL (" + why + ")"
-    _log(f"label-kernel check: {'passed' if ok else 'FAILED'} ({why})"
-         + ("" if ok else " -> kernel-free fallback: pool weights by the raw label likelihood, no calibration"))
+    # 1. label-kernel check on the training file (spec-z / many-band overlap rows); skipped in exact-label mode (task sets 1/2)
+    if exact:
+        ok, why = False, "not applicable: exact labels (task set %d, no redshift_manyband column) -> weights and calibration fitted against the held-out true redshifts" % taskset
+        _log(f"label-kernel check: {why}")
+    else:
+        _run([py, str(PILOT / "manyband_mixture.py"), "check", "--base", str(base)] + tsy + ["--ndraw", "20", "--seed", str(SEED)],
+             logs / "kernel_check.out")
+        ok, why = kernel_check(base / "pilot" / "runs" / f"label_model_check_pz_challenge_taskset_{taskset}_{sim}_training_{scen}.json")
+        if os.environ.get("KERNELPOOL_FORCE_KERNEL_FAIL"):      # test switch: exercise the kernel-free fallback on data that would pass
+            ok, why = False, "forced by KERNELPOOL_FORCE_KERNEL_FAIL (" + why + ")"
+        _log(f"label-kernel check: {'passed' if ok else 'FAILED'} ({why})"
+             + ("" if ok else " -> kernel-free fallback: pool weights by the raw label likelihood, no calibration"))
 
     # 2. the three members, in parallel (each is one pilot training run: V1 split, kNN weights, inform, V1 + test estimates)
     procs = []
-    for label, variant, est, extra in MEMBERS:
+    reuse = bool(os.environ.get("KERNELPOOL_REUSE_MEMBERS"))
+    for label, variant, est, extra in members:
+        if reuse:
+            d = base / "pilot" / "runs" / member_dir_name(taskset, sim, scen, est, f"_nmax{nmax}" if nmax else "", label)
+            have = [d / f"{est}_model_{variant}.pkl", d / f"pz_valid_{variant}.hdf5"] + list((d / f"submission_{variant}").glob("*.hdf5"))
+            if len(have) == 3 and all(f.exists() for f in have):
+                _log(f"member {label}: reused ({d.name})")
+                continue
         cmd = [py, str(PILOT / "pz_ts3_experiment.py")] + tsy + ["--base", str(base), "--catalogs", str(PILOT / "catalogs.yaml"),
                "--nvalid", "0", "--seed", str(SEED), "--variants", variant, "--estimator", est, "--label", label] + extra
         if nmax:
@@ -154,7 +192,7 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
     runs = base / "pilot" / "runs"
     nm = f"_nmax{nmax}" if nmax else ""
     member_dirs = []
-    for label, variant, est, extra in MEMBERS:
+    for label, variant, est, extra in members:
         d = runs / member_dir_name(taskset, sim, scen, est, nm, label)
         member_dirs.append(f"{d}:{variant}")
     # objective "kernel" = likelihood of the labels seen through the label kernel (the method); "label" = likelihood of the labels
@@ -164,12 +202,17 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
           "--objective", "kernel" if ok else "label"], logs / "pool.out")
     pool_dir = runs / f"ts{taskset}ens_{sim}_{scen}_{POOL_LABEL}"
 
-    # 4. calibration through the kernel (if the kernel check passed) and the submission file with the raw-pool point estimate
-    cmd = [py, str(PILOT / "manyband_mixture.py"), "apply", str(pool_dir), "--base", str(base), "--variant", "ens", "--iters", "0", "--tag", "_nodeconv"] + POINT
-    if ok:
+    # 4. calibration -- through the kernel (kernel check passed) or against the exact labels (task sets 1/2: every V1 row has
+    #    an exact redshift, so `--cal-labels mixed` scores every row on the unsmeared PDF) -- and the submission file with
+    #    the raw-pool point estimate
+    calibrated = ok or exact
+    cmd = [py, str(PILOT / "manyband_mixture.py"), "apply", str(pool_dir), "--base", str(base), "--variant", "ens", "--iters", "0", "--tag", "_nodeconv"] + point
+    if calibrated:
         cmd.insert(cmd.index("--iters"), "--calibrate")
+        if exact:
+            cmd += ["--cal-labels", "mixed", "--no-pit-map"]     # see the module docstring (Anderson statistic)
     _run(cmd, logs / "apply.out")
-    sub_dir = pool_dir / ("submission_ens_deconv_cal_nodeconv" if ok else "submission_ens_deconv_nodeconv")
+    sub_dir = pool_dir / ("submission_ens_deconv_cal_nodeconv" if calibrated else "submission_ens_deconv_nodeconv")
     src = sub_dir / f"pz_challenge_taskset_{taskset}_{sim}_pz_estimate_{scen}.hdf5"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(src, output_file)
@@ -177,9 +220,9 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
 
     # 5. model bundle for the estimation-only path
     info = dict(version=VERSION, taskset=taskset, sim=sim, scenario=scen, kernel_ok=ok, kernel_check=why, nmax=nmax,
-                workdir=str(base), submission=str(output_file))
+                label_mode="exact" if exact else "kernel", calibrated=calibrated, workdir=str(base), submission=str(output_file))
     if model_file:
-        bundle = build_bundle(base, taskset, sim, scen, ok, nmax)
+        bundle = build_bundle(base, taskset, sim, scen, ok, nmax, exact=exact)
         Path(model_file).parent.mkdir(parents=True, exist_ok=True)
         with open(model_file, "wb") as fh:
             pickle.dump(bundle, fh, protocol=pickle.HIGHEST_PROTOCOL)
@@ -216,7 +259,7 @@ def _cal_from_plain(d: dict):
     return one(d)
 
 
-def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool, nmax) -> dict:
+def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool, nmax, exact: bool = False) -> dict:
     """Everything the estimation-only path needs: member models (bytes), their stage settings, pool weights,
     calibration (parameters + PIT maps) and the point-estimate rule."""
     sys.path.insert(0, str(PILOT))
@@ -224,7 +267,7 @@ def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool,
     runs = base / "pilot" / "runs"
     nm = f"_nmax{nmax}" if nmax else ""
     members = []
-    for label, variant, est, extra in MEMBERS:
+    for label, variant, est, extra in MEMBERS_BY_TASKSET[taskset]:
         d = runs / member_dir_name(taskset, sim, scen, est, nm, label)
         model_path = d / f"{est}_model_{variant}.pkl"
         members.append(dict(label=label, variant=variant, estimator=est, include_mag_err=("--include-mag-err" in extra),
@@ -232,15 +275,16 @@ def build_bundle(base: Path, taskset: int, sim: str, scen: str, kernel_ok: bool,
     pool_dir = runs / f"ts{taskset}ens_{sim}_{scen}_{POOL_LABEL}"
     weights = json.loads((pool_dir / "ensemble_ens.json").read_text())["weights"]
     cal = None
-    if kernel_ok:
+    if kernel_ok or exact:
         with open(pool_dir / "calibration_ens_nodeconv.pkl", "rb") as fh:
             c = pickle.load(fh)
         cal = dict(cal=_cal_to_plain(c["cal"]), pit_map=bool(c["pit_map"]), fit_half=c["fit_half"])
+    pt = POINT_BY_TASKSET[taskset]
     return dict(name="kernelpool", version=VERSION, taskset=taskset, sim=sim, scenario=scen,
                 grid=dict(zmin=ZMIN, zmax=ZMAX, nzbins=NZBINS), seed=SEED, catalog=f"{sim}_roman_rubin",
-                members=members, pool_weights=weights, calibration=cal, kernel_ok=kernel_ok,
+                members=members, pool_weights=weights, calibration=cal, kernel_ok=kernel_ok, label_mode="exact" if exact else "kernel",
                 pool_objective="kernel" if kernel_ok else "label", nmax=nmax,
-                point=dict(bright="mean", faint="median", split=23.0), created=time.strftime("%Y-%m-%d %H:%M:%S"))
+                point=dict(bright=pt[1].split("_", 1)[1], faint=pt[3].split("_", 1)[1], split=float(pt[5])), created=time.strftime("%Y-%m-%d %H:%M:%S"))
 
 
 def estimate_only(model_file, test_file, output_file, workdir=None) -> dict:

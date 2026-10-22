@@ -1,6 +1,6 @@
-# PZ task sets 3 and 4 — method description (draft for the PR, 2026-09-22)
+# PZ task sets 3 and 4 — method description (draft for the PR, 2026-09-22; task sets 1 and 2 added 2026-10-22, see the last section)
 
-Entry for task sets 3 and 4, both simulations, both scenarios. Code and
+Entry for task sets 3 and 4, both simulations, both scenarios (v1.0.0; task sets 1 and 2 in v1.1.0, last section). Code and
 text written by Claude (Fable models); direction, critical review and all decisions by
 Thomas Reiprich (Bonn). "Ours" below means Thomas' or Claude's.
 
@@ -100,3 +100,55 @@ training file; if the training-time check of the label kernel fails
 (different label model), the pool weights are fitted on the labels
 without the kernel and the calibration is skipped, so that nothing in
 the submitted files then depends on it.
+
+## Task sets 1 and 2 (v1.1.0, added at the organizers' invitation of 2026-10-22)
+
+**What changes.** The training files of task sets 1 and 2 carry exact
+redshifts only (no many-band column), so the label kernel has nothing to
+do: the same three estimators and the same pool are fitted in an
+"exact-label mode" — pool weights by the likelihood of the held-out true
+redshifts, calibration against them (the exponent α and the Gaussian
+mixing term), V1 = a random 20 % hold-out of the training file (weights
+and calibration fitted on one half of it). The FlexZBoost members are
+unweighted on task set 1 (representative training sample) and weighted
+towards the *test* photometry on task set 2 (k-nearest-neighbour density
+ratio in (i, colours); no labels enter the weights). Point estimate:
+mean of the uncalibrated pool on task set 1 (i < 23 throughout);
+mean below i = 23 and interpolated median above on task set 2, as on
+task sets 3/4. Only the task set's own training file and the unlabelled
+test photometry enter the fit; the many-band data of the NZ challenge
+were used for local validation of task set 2 only, never in training,
+weights or calibration. The task-set-3/4 files are those of v1.0.0,
+unchanged.
+
+**No PIT map on task sets 1/2.** The scored Anderson k-sample statistic
+is scipy's standardised statistic, which fluctuates around zero for a
+uniform PIT, and the bracket starts at 0: with the PIT map the task-set-1
+PIT is so close to uniform (KS 0.007 on the independent hold-out half)
+that the statistic is negative in 70 % of bootstrap draws and the row
+would score zero by chance; without the map (KS 0.019, statistic +4) the
+calibration quality is the same (PIT extreme fraction 10.1 % vs 10.4 %).
+The bundles record the setting and the estimation-only path follows it.
+
+**Validation, task set 1** (20k hold-out rows per combination, true
+redshifts): bias ≤ 0.0002, biweight scatter 0.011–0.018, |Δz|/(1+z) > 0.2
+fraction ≤ 0.2 %, KS 0.013–0.035, PIT outlier fraction ≤ 0.002, i.e.
+every scored metric inside the innermost bracket by a factor ≥ 1.5. The
+pool is GPz-dominated (weights 0.55–0.67) except on Flagship 10yr (0.40);
+the regularised FlexZBoost gets no weight on a representative sample.
+
+**Validation, task set 2** (Cardinal 1yr: 50k representative rows of the
+NZ challenge's ddf_00 field with many-band labels, PZ rows removed, label
+noise corrected with the documented model; 13k spectroscopic rows against
+true z): the four PIT rows are at full points with or without calibration
+(GPz's honest widths carry the pool off-support; the calibration lowers
+the PIT-outlier fraction from 0.04 to 0.01); the bias is −0.005 to −0.010;
+the scatter is 0.083 (1 point of 3) and the |Δz|/(1+z) > 0.2 fraction
+9.4 % after the correction (at the 10 % edge), both set by the 59 % of
+the test sample fainter than i = 24, where 74 % of the objects have no
+training object nearby. Pool variants (unweighted members, GPz alone)
+and point rules (mean, mode) were equal or worse; the mode doubles the
+outlier fraction. Expected task-set-2 score 0.81–0.86, i.e. 17–18 of 21
+per run; the spectroscopic subset scores 21/21. Stated plainly: a
+spectroscopically selected training set does not constrain the faint
+half of this test sample, and no estimator we tried changes that.

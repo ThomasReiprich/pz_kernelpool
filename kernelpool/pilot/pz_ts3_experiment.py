@@ -49,6 +49,13 @@ Usage (from the DESC_NZ_Challenge folder, env desc-pz activated):
   python pilot/pz_ts3_experiment.py --taskset 3 --sim cardinal --scenario 1yr --estimator gpz
 
 Outputs go to pilot/runs/ts<N>exp_<sim>_<scenario>[_<estimator>][_nmaxN][_label]/.
+
+Task sets 1 and 2 (added 2026-10-22, ours): their training files have no `redshift_manyband` column -- every label
+is an exact redshift. The script then runs in "exact-label mode": the many-band slot is filled with the same exact
+redshift (so that downstream the label side `z_manyband` and the exact side `z_spec` coincide and the through-kernel
+machinery is bypassed by `--cal-labels mixed` / `--objective label`), V1 is a random hold-out of ALL labelled rows
+(representative for task set 1, spectroscopically selected for task set 2), and the `union_w` weights point at the
+PZ TEST photometry (no labels used) instead of at the many-band rows.
 """
 
 from __future__ import annotations
@@ -118,10 +125,14 @@ def score_set(name, ens, z_lab, z_sp, mag_i, uncovered, sim, logf, variant):
         **pit_m,
     )
     pm, pf = d["point_zmode_vs_label"], d["faint"]
+    # the faint part may be empty (task set 1: i < 23 throughout) -- then its numbers are None (2026-10-22)
+    def pct(v, fmt=".1f"):
+        return "n/a" if v is None or not np.isfinite(v) else f"{100*v:{fmt}}%"
+    faint_txt = (f"sNMAD={pf['sigma_nmad']:.4f} outl={pct(pf['outlier_frac'])}" if pf and pf.get("sigma_nmad") is not None else "n/a")
     log(f"[{variant}] {name}: ALL bias={pm['bias_median']:+.4f} sNMAD={pm['sigma_nmad']:.4f} outl={100*pm['outlier_frac']:.1f}% (PZ def {100*pm['outlier_frac_pz']:.1f}%) "
         f"PITextr={100*(pit_m['pit_frac_below_0p05']+pit_m['pit_frac_above_0p95']):.1f}% <logp>={d['mean_log_p']:+.2f} | "
-        f"i>{FAINT_CUT:.0f} ({100*faint.mean():.0f}%): sNMAD={pf['sigma_nmad']:.4f} outl={100*pf['outlier_frac']:.1f}% "
-        f"(label outliers expected {100*d['expected_label_outliers_faint']:.1f}%, uncovered {100*d['uncovered_frac_faint']:.0f}%) | "
+        f"i>{FAINT_CUT:.0f} ({100*faint.mean():.0f}%): {faint_txt} "
+        f"(label outliers expected {pct(d['expected_label_outliers_faint'])}, uncovered {pct(d['uncovered_frac_faint'], '.0f')}) | "
         f"tomo acc={acc:.3f} rms dmean={d['tomo_rms_dmean']:.4f} rms dstd={d['tomo_rms_dstd']:.4f}", logf)
     if d["point_zmode_vs_specz"]:
         ps = d["point_zmode_vs_specz"]
@@ -131,7 +142,7 @@ def score_set(name, ens, z_lab, z_sp, mag_i, uncovered, sim, logf, variant):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--taskset", type=int, default=3, choices=[3, 4])
+    ap.add_argument("--taskset", type=int, default=3, choices=[1, 2, 3, 4])
     ap.add_argument("--sim", default="cardinal", choices=["cardinal", "flagship"])
     ap.add_argument("--scenario", default="1yr")
     ap.add_argument("--base", default=None)
@@ -206,13 +217,17 @@ def main() -> int:
         train_all = {k: v[keep] for k, v in train_all.items()}
     n_all = len(train_all["ra"])
     z_sp_all = train_all["redshift"].astype(float)
+    exact_labels = "redshift_manyband" not in train_all
+    if exact_labels:      # task sets 1/2: every label exact; the many-band slot carries the same redshift (see the module docstring)
+        train_all["redshift_manyband"] = z_sp_all.copy()
+        log(f"no redshift_manyband column: EXACT-LABEL MODE (task set {args.taskset}); z_manyband := redshift for every row, V1 = hold-out of all labelled rows", logf)
     z_mb_all = train_all["redshift_manyband"].astype(float)
     has_sp, has_mb = np.isfinite(z_sp_all), np.isfinite(z_mb_all)
     i_all = train_all[ref_band].astype(float)
     log(f"training file: {n_all} rows (file {n_file}); spec-z {has_sp.sum()}, many-band {has_mb.sum()}, both {(has_sp & has_mb).sum()}, neither {(~has_sp & ~has_mb).sum()}", logf)
     log(f"  i quantiles 10/50/90: spec-z rows {np.nanpercentile(i_all[has_sp], [10, 50, 90]).round(2)}, many-band rows {np.nanpercentile(i_all[has_mb], [10, 50, 90]).round(2)}", logf)
     both = has_sp & has_mb
-    if both.sum() > 20:
+    if both.sum() > 20 and not exact_labels:
         pm = point_metrics(z_sp_all[both], z_mb_all[both])
         log(f"  many-band vs spec-z on the {both.sum()} rows with both: sNMAD={pm['sigma_nmad']:.4f} outl={100*pm['outlier_frac']:.2f}% (i median {np.nanmedian(i_all[both]):.2f})", logf)
 
@@ -225,7 +240,7 @@ def main() -> int:
     v1_path = outdir / "valid_v1_cosmos_holdout.hdf5"
     tables_io.write(v1, str(v1_path))
     z1_lab, z1_sp, i1 = v1["redshift_manyband"].astype(float), v1["redshift"].astype(float), v1[ref_band].astype(float)
-    log(f"V1 (COSMOS hold-out): {hold.sum()} rows, i quantiles {np.nanpercentile(i1, [10, 50, 90]).round(2)}, frac i>{FAINT_CUT}: {np.mean(i1 > FAINT_CUT):.3f}, spec-z for {np.isfinite(z1_sp).sum()}; "
+    log(f"V1 ({'hold-out of all labelled rows' if exact_labels else 'COSMOS hold-out'}): {hold.sum()} rows, i quantiles {np.nanpercentile(i1, [10, 50, 90]).round(2)}, frac i>{FAINT_CUT}: {np.mean(i1 > FAINT_CUT):.3f}, spec-z for {np.isfinite(z1_sp).sum()}; "
         f"expected label outliers all/faint: {100*expected_label_outliers(i1, args.sim):.1f}% / {100*expected_label_outliers(i1[i1 > FAINT_CUT], args.sim):.1f}%", logf)
     pool = {k: v[~hold] for k, v in train_all.items()}
     p_sp, p_mb = np.isfinite(pool["redshift"]), np.isfinite(pool["redshift_manyband"])
@@ -251,7 +266,7 @@ def main() -> int:
             v2_path = fill_nondetections(v2_path, mag_limits, outdir)
         test_file_est = fill_nondetections(test_file, mag_limits, outdir)
 
-    metrics = dict(key=key, taskset=args.taskset, estimator=args.estimator, n_train_file=n_all, holdout=args.holdout,
+    metrics = dict(key=key, taskset=args.taskset, estimator=args.estimator, exact_labels=exact_labels, n_train_file=n_all, holdout=args.holdout,
                    n_v1=int(hold.sum()), label_outlier_table=LABEL_OUTLIER_TABLE[args.sim], variants={})
     x_v1 = feature_matrix(v1, bands, mag_limits, ref_band)
     x_v2 = feature_matrix(v2, bands, mag_limits, ref_band) if v2 is not None else None
@@ -276,11 +291,13 @@ def main() -> int:
         weights = None
         if variant == "union_w":
             x_u = feature_matrix(fit, bands, mag_limits, ref_band)
-            x_t = feature_matrix({k: v[p_mb] for k, v in pool.items()}, bands, mag_limits, ref_band)
+            # target of the density ratio: the many-band (representative) rows; in exact-label mode the PZ test photometry
+            # (unlabelled; the task-set-2 situation of pz_ts2_experiment.py)
+            x_t = feature_matrix(test if exact_labels else {k: v[p_mb] for k, v in pool.items()}, bands, mag_limits, ref_band)
             weights, _, n_tg, _ = knn_density_ratio(x_u, x_t, args.k, args.wmax)
             n_eff = float(weights.sum() ** 2 / (weights ** 2).sum())
             fit["weight"] = weights
-            log(f"[{variant}] weights towards the many-band distribution: n_eff={n_eff:.0f} of {sel.sum()}, quantiles 10/50/90/99 {np.percentile(weights, [10, 50, 90, 99]).round(3)}, raw count 0 for {np.mean(n_tg == 0):.3f}", logf)
+            log(f"[{variant}] weights towards the {'test-sample' if exact_labels else 'many-band'} distribution: n_eff={n_eff:.0f} of {sel.sum()}, quantiles 10/50/90/99 {np.percentile(weights, [10, 50, 90, 99]).round(3)}, raw count 0 for {np.mean(n_tg == 0):.3f}", logf)
         fit_path = outdir / f"fit_{variant}.hdf5"
         tables_io.write(fit, str(fit_path))
         i_fit = fit[ref_band].astype(float)

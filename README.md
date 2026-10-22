@@ -1,11 +1,15 @@
 # kernelpool
 
-LSST-DESC PZ data challenge entry for task sets 3 and 4 (Bonn, 2026): a pool
+LSST-DESC PZ data challenge entry (Bonn, 2026; task sets 3 and 4 in
+v1.0.0, task sets 1 and 2 added in v1.1.0): a pool
 of FlexZBoost (two settings) and GPz with per-i-band-bin weights and a
 per-bin calibration, both fitted by the likelihood of the many-band labels
 of a COSMOS hold-out seen through the organizers' label error model
 (rectangular kernel, true redshift on the 0–3 PDF grid, labels on 0–6);
-raw-pool point estimate. Method: `pz_method_writeup.md`.
+raw-pool point estimate. On task sets 1 and 2 (exact labels) the same
+pool is fitted against a hold-out of the training file, without the
+kernel and without the PIT map (see the write-up). Method:
+`pz_method_writeup.md`.
 
 Code and text written by Claude (Fable models); direction, critical review
 and all decisions by Thomas Reiprich (Bonn). `kernelpool/pilot/` holds the
@@ -18,7 +22,7 @@ Entry points: `train_and_estimate(train_file, test_file, output_file,
 model_file=None)` and `estimate_only(model_file, test_file, output_file)`;
 command line `python -m kernelpool train|estimate ...`.
 `environment_desc-pz.txt` is the `pip freeze` of the environment the
-shipped models were built in; `build_submission.sh` rebuilds the eight
+shipped models were built in; `build_submission.sh` rebuilds the sixteen
 submission files and model bundles and runs the checks.
 
 ## License
