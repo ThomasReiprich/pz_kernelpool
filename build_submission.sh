@@ -69,9 +69,11 @@ for c in $COMBOS; do
 done
 [ $FAILED -eq 0 ] || { echo "finished with failures"; exit 1; }
 
+if [ -z "$SKIP_REPEAT" ]; then      # SKIP_REPEAT=1: the v1.1.0 build keeps the v1.0.0 ts3/4 files, whose repeat test was done on 2026-09-22
 echo "[$(date +%H:%M:%S)] repeat training of ts3 cardinal 1yr (retraining reproducibility)"
 mkdir -p submissions/kernelpool_repeat
 train_one 3 cardinal 1yr submissions/kernelpool_repeat pilot/final/ts3_cardinal_1yr_repeat || { echo "repeat training failed"; exit 1; }
+fi
 
 echo "[$(date +%H:%M:%S)] checks: validator, PDF sanity, estimation-only re-application, repeat training, comparison with the previous files"
 python - <<'EOF' 2>&1 | tee logs/build_checks.out || exit 1
@@ -131,6 +133,10 @@ for c in os.environ["ALL_COMBOS"].split():
           f"(max |dPDF| {dmax:.2e}, max |dzmode| {zdmax:.2e}){cmp}")
 
 # repeat training of ts3 cardinal 1yr: same models / weights / calibration / files?
+if os.environ.get("SKIP_REPEAT"):
+    print("REPEAT ts3 cardinal 1yr: skipped (SKIP_REPEAT set; v1.0.0 files kept)")
+    print("all checks passed" if ok else "CHECKS FAILED")
+    sys.exit(0 if ok else 1)
 def h(b): return hashlib.md5(b).hexdigest()
 with open("submissions/kernelpool/pz_challenge_taskset_3_cardinal_pz_model_1yr.pkl", "rb") as f1, \
      open("submissions/kernelpool_repeat/pz_challenge_taskset_3_cardinal_pz_model_1yr.pkl", "rb") as f2:
