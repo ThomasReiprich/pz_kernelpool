@@ -1,8 +1,9 @@
-# PZ task sets 3 and 4 — method description (draft for the PR, 2026-09-22; task sets 1 and 2 added 2026-10-22, see the last section)
+# kernelpool — method description (task sets 3 and 4: v1.0.0, 2026-09-22; task sets 1 and 2: v1.1.0 and v1.2.0, 2026-10-22/23, the last two sections)
 
-Entry for task sets 3 and 4, both simulations, both scenarios (v1.0.0; task sets 1 and 2 in v1.1.0, last section). Code and
-text written by Claude (Fable models); direction, critical review and all decisions by
-Thomas Reiprich (Bonn). "Ours" below means Thomas' or Claude's.
+Entry for all four task sets, both simulations, both scenarios. The task-set-3/4 files are those of v1.0.0 (accepted
+and scored), unchanged since; task sets 1 and 2 were added in v1.1.0 and first submitted in v1.2.0, which revised the
+task-set-2 faint end. Code and text written by Claude (Fable models); direction, critical review and all decisions by
+Thomas Reiprich (Bonn). "Ours" below means Thomas and Claude together.
 
 ## Method
 
@@ -82,12 +83,19 @@ end); a calibration objective using the spectroscopic rows directly
 Others: RAIL, FlexZBoost, GPz; the label-noise kernel (organizers' RAIL
 selector, Yin et al. 2025, Khostovan et al. 2026); kNN density-ratio
 weights (Lima et al. 2008); PIT recalibration (standard practice);
-forward loss correction (Patrini et al. 2017). The accepted `conclave`
-entry uses the same ensemble-plus-PIT-recalibration design, which we
-found after building ours. Ours: fitting the pool weights and the
-calibration through the kernel; the choice of i-band magnitude as the
-bin variable; the point-estimate rule; the validation design and the
-checks above.
+forward loss correction (Patrini et al. 2017); for v1.2.0, BPZ (Benítez
+2000) in RAIL's `pz-rail-bpz` / `desc-bpz` port with the COSMOS template
+set and HDFN prior shipped with RAIL, and the idea of a learned-plus-
+template combination beyond the training depth, which is standard. The
+accepted `conclave` entry uses the same ensemble-plus-PIT-recalibration
+design, which we found after building ours. Ours: fitting the pool
+weights and the calibration through the kernel; the choice of i-band
+magnitude as the bin variable; the point-estimate rule; the validation
+design and the checks above; in v1.2.0 the PDF-level mixture and its
+placement, the zero-point fit, the estimator subclass that keeps the
+non-detection limits, and the validation of the whole. The
+dimming-augmentation experiment (not in the entry) is a standard idea,
+implemented and tested by us.
 
 ## Reproducibility
 
@@ -99,7 +107,12 @@ Pool weights and calibration are refitted in the pipeline from the
 training file; if the training-time check of the label kernel fails
 (different label model), the pool weights are fitted on the labels
 without the kernel and the calibration is skipped, so that nothing in
-the submitted files then depends on it.
+the submitted files then depends on it. For v1.1.0/v1.2.0: the
+estimation-only path reproduces every one of the sixteen training-path
+files to better than 1e-10 in the PDFs; the BPZ step is deterministic
+(fixed prior, offsets and limits recorded in the bundle, shipped
+template–filter tables), and the organizers' harness procedure passes on
+all four task sets locally.
 
 ## Task sets 1 and 2 (v1.1.0, added at the organizers' invitation of 2026-10-22)
 
@@ -158,7 +171,8 @@ and the PZ rows removed by position: the NZ challenge's ddf_00 field for
 1yr, the many-band rows of the task-set-3 training files for 1yr and 10yr;
 label noise corrected with the documented model; spectroscopic rows
 against true z): the spectroscopic rows score 21/21 everywhere. On the
-full samples the bias is within ±0.01 (Flagship 1yr at the edge: +0.010),
+full samples the bias is within ±0.01 (corrected for the label noise;
+Cardinal 1yr nearest the edge at −0.009, Flagship 1yr +0.008 / +0.009),
 the scatter 0.080–0.090 at 1yr and 0.041–0.042 at 10yr, the |Δz|/(1+z) >
 0.2 fraction 8–12 % at 1yr and 3.8–4.0 % at 10yr, and the PIT rows are at
 full points (KS 0.04–0.11, PIT-outlier ≤ 0.004 with the floor) — about
@@ -171,7 +185,8 @@ representative N(z) to i = 24 and is extrapolated beyond. Pool variants
 (unweighted members, GPz alone, fixed weights) and point rules (mean,
 mode, mass modes) were equal or worse. Stated plainly: a
 spectroscopically selected training set does not constrain the faint
-half of this test sample, and no estimator we tried changes that.
+half of this test sample, and no learned estimator we tried changes that;
+what a template posterior adds there is the subject of the next section.
 
 ## Task set 2, v1.2.0: a template-fitting posterior mixed in at the faint end (2026-10-23)
 
@@ -198,9 +213,11 @@ needs is in the bundle; the template–filter tables ship with the package.
 i ≈ 24 and get the faint bias wrong where the test population differs
 from the extrapolation (Flagship: +0.03 to +0.06 at i > 24.5 against the
 many-band labels); a template posterior with a magnitude-dependent prior
-does not have that failure mode. Mixed in at equal weight the template
-PDFs also broaden the pool's faint PDFs exactly where they were too
-confident. Equal weight is the a-priori choice: there is no labelled
+fails differently (template and prior mismatch rather than training-set
+extrapolation), so the two errors need not coincide. Mixed in at equal
+weight the template PDFs also broaden the pool's faint PDFs; this
+improves the PIT rows on Flagship and leaves them about unchanged on
+Cardinal (numbers below). Equal weight is the a-priori choice: there is no labelled
 faint sample from which a weight could be fitted without using the
 validation data. The cut at 24.5 lies between the pool's own faint bin edges (24.0 and
 24.7); it was chosen with the validation samples in view, which we state
@@ -225,11 +242,18 @@ corrected |Δz|/(1+z) > 0.2 fraction, v1.1.0 → v1.2.0): Cardinal 1yr
 12.2 → 10.1 % and 11.6 → 9.5 %; Cardinal 10yr 3.8 → 2.5 %; Flagship 10yr
 4.0 → 2.4 %. Corrected bias (sign of the correction fixed 2026-10-23):
 Cardinal 1yr −0.009 → −0.008, Flagship 1yr +0.008 / +0.009 → 0.000 /
-+0.001, 10yr within ±0.005; scatter smaller by 0.006 (Cardinal 1yr) and
++0.001, 10yr −0.005 / −0.003; scatter smaller by 0.006 (Cardinal 1yr) and
 0.013 (Flagship 1yr), unchanged at 10yr; spectroscopic rows unchanged.
 PIT rows: KS 0.053 → 0.058 (Cardinal 1yr), 0.115 → 0.067 (Flagship 1yr),
 0.082 → 0.092 (Cardinal 10yr), 0.118 → 0.080 (Flagship 10yr);
-PIT-outlier ≤ 0.0044. A BPZ-only faint end would be worse than the
+PIT-outlier ≤ 0.0045. In points per run on these samples: 18 / 17–18 /
+20 / 20 (Cardinal 1yr, Flagship 1yr, Cardinal 10yr, Flagship 10yr)
+against 18 / 17 / 19 / 19 for v1.1.0; the two 10yr outlier rows sit 0.05
+and 0.13 points inside the 2.5 % bracket, within the uncertainty of the
+label-noise correction, and the Flagship 1yr outlier row straddles 10 %
+between the two samples, so against true redshifts we expect the mixture
+to be worth about one point of 84, with wider margins on the mean and
+outlier rows. A BPZ-only faint end would be worse than the
 pool on Cardinal 1yr and over-confident everywhere (PIT exactly 0 or 1
 for 6–20 % of bright hold-out rows); the point-only swap (entry PDFs,
 BPZ point estimate) was equal in points but leaves PDF and point
