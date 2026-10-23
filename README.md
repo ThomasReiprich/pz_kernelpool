@@ -1,7 +1,8 @@
 # kernelpool
 
 LSST-DESC PZ data challenge entry (Bonn, 2026; task sets 3 and 4 in
-v1.0.0, task sets 1 and 2 added in v1.1.0): a pool
+v1.0.0, their files unchanged since; task sets 1 and 2 added in v1.1.0
+and first submitted in v1.2.0): a pool
 of FlexZBoost (two settings) and GPz with per-i-band-bin weights and a
 per-bin calibration, both fitted by the likelihood of the many-band labels
 of a COSMOS hold-out seen through the organizers' label error model
