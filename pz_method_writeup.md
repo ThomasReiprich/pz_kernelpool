@@ -188,7 +188,9 @@ per-band zero-point offsets fitted on the task's own training file
 (best template at the known redshift for the rows with i < 23, median of
 m_obs − m_model per band, anchored on i, iterated; offsets of 0.03–0.23
 mag in u, ≤ 0.03 mag elsewhere); non-detections enter with the 1σ
-limits read off the task's test file. The nine bands include Roman Y, J
+limits read off the task's test file (through the package's own subclass
+of the RAIL estimator, since the port clips such limits at 20 mag; found
+by the external review of 2026-10-23). The nine bands include Roman Y, J
 and H (filter curves from RAIL). Everything the estimation-only path
 needs is in the bundle; the template–filter tables ship with the package.
 
@@ -203,7 +205,10 @@ faint sample from which a weight could be fitted without using the
 validation data. The cut at 24.5 lies between the pool's own faint bin edges (24.0 and
 24.7); it was chosen with the validation samples in view, which we state
 plainly, and confirmed on a second representative sample the choice had
-not seen. Stated completely: the template set (CWW+SB vs COSMOS), the
+not seen (disjoint in position from the first, but from the same
+simulation and label model; the first is the blended NZ-challenge ddf_00
+field, the second the unblended many-band part of the task-set-3
+training file). Stated completely: the template set (CWW+SB vs COSMOS), the
 cut (24 vs 24.5), the point rule (mode, mean, median, averaged), a
 point-only variant and the weights 0.5, 0.75 and 1 were all scored on
 the same two representative samples before the mixture at equal weight
@@ -216,12 +221,14 @@ level so that point estimate and PDF describe the same object.
 
 **Validation** (same samples and conventions as the v1.1.0 section;
 corrected |Δz|/(1+z) > 0.2 fraction, v1.1.0 → v1.2.0): Cardinal 1yr
-9.4 → 8.8 % (ddf_00) and 8.1 → 7.4 % (task-set-3 source); Flagship 1yr
-12.2 → 10.3 % and 11.6 → 9.6 %; Cardinal 10yr 3.8 → 2.5 %; Flagship 10yr
-4.0 → 2.4 %. Bias within ±0.005 everywhere (Flagship 1yr from +0.010 to
-+0.003), scatter unchanged within 0.002, spectroscopic rows unchanged.
-PIT rows: KS 0.053 → 0.049 (Cardinal 1yr), 0.115 → 0.071 (Flagship 1yr),
-0.082 → 0.091 (Cardinal 10yr), 0.118 → 0.082 (Flagship 10yr);
+9.4 → 8.8 % (ddf_00) and 8.1 → 7.6 % (task-set-3 source); Flagship 1yr
+12.2 → 10.1 % and 11.6 → 9.5 %; Cardinal 10yr 3.8 → 2.5 %; Flagship 10yr
+4.0 → 2.4 %. Corrected bias (sign of the correction fixed 2026-10-23):
+Cardinal 1yr −0.009 → −0.008, Flagship 1yr +0.008 / +0.009 → 0.000 /
++0.001, 10yr within ±0.005; scatter smaller by 0.006 (Cardinal 1yr) and
+0.013 (Flagship 1yr), unchanged at 10yr; spectroscopic rows unchanged.
+PIT rows: KS 0.053 → 0.058 (Cardinal 1yr), 0.115 → 0.067 (Flagship 1yr),
+0.082 → 0.092 (Cardinal 10yr), 0.118 → 0.080 (Flagship 10yr);
 PIT-outlier ≤ 0.0044. A BPZ-only faint end would be worse than the
 pool on Cardinal 1yr and over-confident everywhere (PIT exactly 0 or 1
 for 6–20 % of bright hold-out rows); the point-only swap (entry PDFs,
