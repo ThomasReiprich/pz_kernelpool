@@ -267,7 +267,7 @@ def train_and_estimate(train_file, test_file, output_file, model_file=None, work
     # 4b. v1.2.0: BPZ mixture at the faint end (task set 2): zero points from the training file, BPZ on the test file,
     #     mixed into the floored PDFs for i >= cut, point estimate = median of the mixed PDF there
     bpz_cfg = BPZ_BY_TASKSET.get(taskset)
-    bpz_info = bpz_mix_submission(output_file, train_file, test_file, sim, bpz_cfg, floor_eps, base / "bpz") if bpz_cfg else None
+    bpz_info = bpz_mix_submission(output_file, train_file, test_file, sim, bpz_cfg, floor_eps, base / "bpz", nmax=nmax) if bpz_cfg else None
 
     # 5. model bundle for the estimation-only path
     info = dict(version=VERSION, taskset=taskset, sim=sim, scenario=scen, kernel_ok=ok, kernel_check=why, nmax=nmax,
@@ -307,7 +307,7 @@ def _mag_i_for(test_path: Path, ids: np.ndarray) -> np.ndarray:
     return mi
 
 
-def bpz_mix_submission(output_file: Path, train_file: Path, test_file: Path, sim: str, cfg: dict, floor_eps, workdir: Path) -> dict:
+def bpz_mix_submission(output_file: Path, train_file: Path, test_file: Path, sim: str, cfg: dict, floor_eps, workdir: Path, nmax=None) -> dict:
     """v1.2.0 training-path step (task set 2): fit the BPZ zero points on the training file, run BPZ on the test file and
     rewrite output_file with the faint-end mixture (pilot/bpz_member.py). Returns what the bundle must carry."""
     import h5py
@@ -326,7 +326,7 @@ def bpz_mix_submission(output_file: Path, train_file: Path, test_file: Path, sim
     _log("bpz: 1-sigma detection limits from the test file: " + ", ".join(f"{b.split('_')[1]} {v:.2f}" for b, v in limits.items()))
     model = bm.hdfn_model(cfg["nt_array"], len(bands))
     train = bm._as_float_table(train_file)
-    zp = bm.fit_zeropoints(train, model, cfg, grid, limits, workdir, log=_log)
+    zp = bm.fit_zeropoints(train, model, cfg, grid, limits, workdir, log=_log, nmax=nmax, seed=SEED)
     cwd = os.getcwd(); os.chdir(workdir)          # RAIL writes stage outputs into the working directory
     try:
         p_bpz = bm.bpz_pdfs(test_file, model, cfg, grid, limits, zp, workdir, tag="test")

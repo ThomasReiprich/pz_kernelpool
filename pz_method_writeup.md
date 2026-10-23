@@ -141,7 +141,9 @@ uniform PIT, and the bracket starts at 0: with the PIT map the task-set-1
 PIT is so close to uniform (KS 0.007 on the independent hold-out half)
 that the statistic is negative in 70 % of bootstrap draws and the row
 would score zero by chance; without the map (KS 0.019, statistic +4) the
-calibration quality is the same (PIT extreme fraction 10.1 % vs 10.4 %).
+PIT extreme fraction is the same (10.1 % vs 10.4 %) while the KS
+statistic is somewhat larger (0.019 vs 0.007): a small loss of
+calibration, accepted to avoid the scorer artefact.
 The bundles record the setting and the estimation-only path follows it.
 
 **Validation, task set 1** (20k hold-out rows per combination, true
@@ -198,8 +200,8 @@ does not have that failure mode. Mixed in at equal weight the template
 PDFs also broaden the pool's faint PDFs exactly where they were too
 confident. Equal weight is the a-priori choice: there is no labelled
 faint sample from which a weight could be fitted without using the
-validation data. The cut at 24.5 coincides with the pool's own faint bin
-edges; it was chosen with the validation samples in view, which we state
+validation data. The cut at 24.5 lies between the pool's own faint bin edges (24.0 and
+24.7); it was chosen with the validation samples in view, which we state
 plainly, and confirmed on a second representative sample the choice had
 not seen. Stated completely: the template set (CWW+SB vs COSMOS), the
 cut (24 vs 24.5), the point rule (mode, mean, median, averaged), a
