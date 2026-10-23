@@ -294,13 +294,15 @@ def _apply_catalog(sim: str) -> None:
 
 
 def _mag_i_for(test_path: Path, ids: np.ndarray) -> np.ndarray:
-    """i magnitudes of the test rows in the order of the submission file's object ids (NaN -> 26.0, as estimate_only)."""
+    """i magnitudes of the test rows (NaN -> 26.0, as estimate_only). The submission file must hold the test rows in the
+    test file's order: the pilot asserts this when it writes the file (manyband_mixture.py, ts3_ensemble.py) and the
+    BPZ posteriors are computed in test-file order, so both are used positionally; a differing order is an error,
+    never silently re-sorted (object ids are not a safe key in every file, data_inventory.md)."""
     import tables_io
     t = tables_io.read(str(test_path))
     tid = np.asarray(t["object_id"]).astype(int); mi = np.asarray(t["mag_i_lsst"], float)
-    if not np.array_equal(tid, ids):
-        pos = {o: k for k, o in enumerate(tid)}
-        mi = mi[np.array([pos[o] for o in ids])]
+    if len(tid) != len(ids) or not np.array_equal(tid, ids):
+        raise RuntimeError("submission rows are not in the test file's order; refusing to mix BPZ posteriors positionally")
     mi = mi.copy(); mi[~np.isfinite(mi)] = 26.0
     return mi
 
@@ -337,7 +339,7 @@ def bpz_mix_submission(output_file: Path, train_file: Path, test_file: Path, sim
     if len(p_bpz) != len(y):
         raise RuntimeError(f"bpz: {len(p_bpz)} PDFs for {len(y)} submission rows")
     ids = np.asarray(anc["object_id"]).ravel().astype(int)
-    mi = _mag_i_for(test_file, ids)
+    mi = _mag_i_for(test_file, ids)          # raises unless the submission rows are the test rows in order (p_bpz is in test order)
     pe = np.maximum(y, 0); pe = pe / trapezoid(pe, zgrid, axis=1)[:, None]
     pp = bm.mix_pdfs(pe, p_bpz, zgrid, mi, cfg["cut"], cfg["weight"], floor_eps)
     faint = mi >= cfg["cut"]

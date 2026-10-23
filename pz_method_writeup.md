@@ -201,10 +201,16 @@ faint sample from which a weight could be fitted without using the
 validation data. The cut at 24.5 coincides with the pool's own faint bin
 edges; it was chosen with the validation samples in view, which we state
 plainly, and confirmed on a second representative sample the choice had
-not seen. Learned-where-supported, templates-beyond is a standard
-combination; what is specific here is that the two components are
-mixed at the PDF level so that point estimate and PDF describe the same
-object.
+not seen. Stated completely: the template set (CWW+SB vs COSMOS), the
+cut (24 vs 24.5), the point rule (mode, mean, median, averaged), a
+point-only variant and the weights 0.5, 0.75 and 1 were all scored on
+the same two representative samples before the mixture at equal weight
+was adopted; the two samples are drawn from the same simulated deep field
+and are not independent of each other in the strong sense. The
+validation numbers below are label-noise-corrected model estimates.
+Learned-where-supported, templates-beyond is a standard combination;
+what is specific here is that the two components are mixed at the PDF
+level so that point estimate and PDF describe the same object.
 
 **Validation** (same samples and conventions as the v1.1.0 section;
 corrected |Δz|/(1+z) > 0.2 fraction, v1.1.0 → v1.2.0): Cardinal 1yr
