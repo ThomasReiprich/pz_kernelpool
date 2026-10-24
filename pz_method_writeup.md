@@ -160,6 +160,12 @@ PIT extreme fraction is the same (10.1 % vs 10.4 %) while the KS
 statistic is somewhat larger (0.019 vs 0.007): a small loss of
 calibration, accepted to avoid the scorer artefact.
 The bundles record the setting and the estimation-only path follows it.
+The organizers' pull request #104 (open at the time of writing, 2026-10-24)
+lowers the Anderson bracket edge to −1000, which removes the reason; the
+setting is kept for this submission because it changes no points, and the
+map can return in a later revision once the new brackets are in force. The
+same pull request lowers the PIT-outlier edge to −0.01 without changing the
+metric, so the artefact of issue #101 remains and the floor stays.
 
 **Validation, task set 1** (20k hold-out rows per combination, true
 redshifts): bias ≤ 0.0002, biweight scatter 0.011–0.018, |Δz|/(1+z) > 0.2
