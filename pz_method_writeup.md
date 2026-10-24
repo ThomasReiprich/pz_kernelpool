@@ -68,8 +68,10 @@ scenarios. The label kernel is verified against the labels to i ≈ 24 and
 assumed correct at fainter magnitudes, where no spectroscopic check is
 possible. About 0.5 % of Flagship objects lie above the
 grid edge z = 3 (a scan of edges to 4.0 and a 0.005 step found no
-criterion that improves and a resolution cost for FlexZBoost). Nothing in
-the scored point metrics depends on the calibration.
+criterion that improves and a resolution cost for FlexZBoost). On task
+sets 3/4 (and 1) nothing in the scored point metrics depends on the
+calibration; on task set 2 since v1.2.0 the faint point estimates are
+medians of the calibrated mixture (last section).
 
 ## Tried and dropped
 
@@ -217,9 +219,10 @@ fails differently (template and prior mismatch rather than training-set
 extrapolation), so the two errors need not coincide. Mixed in at equal
 weight the template PDFs also broaden the pool's faint PDFs; this
 improves the PIT rows on Flagship and leaves them about unchanged on
-Cardinal (numbers below). Equal weight is the a-priori choice: there is no labelled
-faint sample from which a weight could be fitted without using the
-validation data. The cut at 24.5 lies between the pool's own faint bin edges (24.0 and
+Cardinal (numbers below). Equal weight is the default rationale rather
+than a fitted value: there is no labelled faint sample from which a
+weight could be fitted without using the validation data, and the
+alternatives 0.75 and 1 that were scored did no better overall. The cut at 24.5 lies between the pool's own faint bin edges (24.0 and
 24.7); it was chosen with the validation samples in view, which we state
 plainly, and confirmed on a second representative sample the choice had
 not seen (disjoint in position from the first, but from the same
